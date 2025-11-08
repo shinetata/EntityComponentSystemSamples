@@ -1,4 +1,4 @@
-#if UNITY_EDITOR || UNITY_STANDALONE
+#if UNITY_EDITOR
 using Unity.Burst;
 using Unity.Entities;
 using Unity.Rendering;
@@ -6,7 +6,6 @@ using Unity.Rendering;
 namespace HelloCube.StateChange
 {
     [BurstCompile]
-    [UpdateInGroup(typeof(SimulationSystemGroup))]
     public partial struct CubeColorURPSyncSystem : ISystem
     {
         [BurstCompile]

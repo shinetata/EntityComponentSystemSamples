@@ -1,4 +1,4 @@
-#if UNITY_EDITOR || UNITY_STANDALONE
+#if UNITY_EDITOR
 using Unity.Burst;
 using Unity.Entities;
 using Unity.Rendering;
