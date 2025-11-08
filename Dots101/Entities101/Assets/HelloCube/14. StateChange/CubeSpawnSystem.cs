@@ -1,7 +1,6 @@
 using Unity.Burst;
-using Unity.Collections;
 using Unity.Entities;
-using Unity.Rendering;
+using Unity.Mathematics;
 using Unity.Transforms;
 
 namespace HelloCube.StateChange
@@ -9,6 +8,7 @@ namespace HelloCube.StateChange
     public partial struct CubeSpawnSystem : ISystem
     {
         Config priorConfig;
+        static readonly float4 ColorWhite = new float4(1f, 1f, 1f, 1f);
 
         [BurstCompile]
         public void OnCreate(ref SystemState state)
@@ -28,35 +28,50 @@ namespace HelloCube.StateChange
             }
             priorConfig = config;
 
-            var query = SystemAPI.QueryBuilder().WithAll<URPMaterialPropertyBaseColor>().Build();
-            state.EntityManager.DestroyEntity(query);
-
-            var entities = state.EntityManager.Instantiate(
-                config.Prefab,
-                (int)(config.Size * config.Size),
-                Allocator.Temp);
+            var stateCubeQuery = SystemAPI.QueryBuilder().WithAll<StateCubeTag>().Build();
+            state.EntityManager.DestroyEntity(stateCubeQuery);
 
             var center = (config.Size - 1) / 2f;
-            int i = 0;
-            foreach (var transform in
-                     SystemAPI.Query<RefRW<LocalTransform>>())
+            var count = (int)(config.Size * config.Size);
+            for (int i = 0; i < count; i++)
             {
-                transform.ValueRW.Scale = 1;
-                transform.ValueRW.Position.x = (i % config.Size - center) * 1.5f;
-                transform.ValueRW.Position.z = (i / config.Size - center) * 1.5f;
-                i++;
-            }
+                var entity = state.EntityManager.Instantiate(config.Prefab);
 
-            var spinQuery = SystemAPI.QueryBuilder().WithAll<Spin>().Build();
+                if (!state.EntityManager.HasComponent<StateCubeTag>(entity))
+                {
+                    state.EntityManager.AddComponent<StateCubeTag>(entity);
+                }
 
-            if (config.Mode == Mode.VALUE)
-            {
-                state.EntityManager.AddComponent<Spin>(query);
-            }
-            else if (config.Mode == Mode.ENABLEABLE_COMPONENT)
-            {
-                state.EntityManager.AddComponent<Spin>(query);
-                state.EntityManager.SetComponentEnabled<Spin>(spinQuery, false);
+                var transform = state.EntityManager.GetComponentData<LocalTransform>(entity);
+                transform.Scale = 1;
+                transform.Position.x = (i % config.Size - center) * 1.5f;
+                transform.Position.z = (i / config.Size - center) * 1.5f;
+                state.EntityManager.SetComponentData(entity, transform);
+
+                var spinState = new SpinState
+                {
+                    HasSpinComponent = config.Mode != Mode.STRUCTURAL_CHANGE,
+                    IsSpinning = false
+                };
+
+                if (state.EntityManager.HasComponent<SpinState>(entity))
+                {
+                    state.EntityManager.SetComponentData(entity, spinState);
+                }
+                else
+                {
+                    state.EntityManager.AddComponentData(entity, spinState);
+                }
+
+                var color = new CubeColor { Value = ColorWhite };
+                if (state.EntityManager.HasComponent<CubeColor>(entity))
+                {
+                    state.EntityManager.SetComponentData(entity, color);
+                }
+                else
+                {
+                    state.EntityManager.AddComponentData(entity, color);
+                }
             }
         }
 

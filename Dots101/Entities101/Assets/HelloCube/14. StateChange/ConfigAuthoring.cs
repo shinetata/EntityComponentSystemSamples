@@ -46,8 +46,18 @@ namespace HelloCube.StateChange
         public bool HitChanged;
     }
 
-    public struct Spin : IComponentData, IEnableableComponent
+    public struct CubeColor : IComponentData
     {
+        public float4 Value;
+    }
+
+    public struct StateCubeTag : IComponentData
+    {
+    }
+
+    public struct SpinState : IComponentData
+    {
+        public bool HasSpinComponent;
         public bool IsSpinning;
     }
 

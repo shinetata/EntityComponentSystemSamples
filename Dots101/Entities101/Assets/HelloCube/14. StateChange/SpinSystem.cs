@@ -17,25 +17,15 @@ namespace HelloCube.StateChange
         [BurstCompile]
         public void OnUpdate(ref SystemState state)
         {
-            var config = SystemAPI.GetSingleton<Config>();
+            SystemAPI.GetSingleton<Config>();
 
             state.Dependency.Complete();
             var before = ProfilerUnsafeUtility.Timestamp;
 
-            if (config.Mode == Mode.VALUE)
+            new SpinJob
             {
-                new SpinByValueJob
-                {
-                    Offset = quaternion.RotateY(SystemAPI.Time.DeltaTime * math.PI)
-                }.ScheduleParallel();
-            }
-            else
-            {
-                new SpinJob
-                {
-                    Offset = quaternion.RotateY(SystemAPI.Time.DeltaTime * math.PI)
-                }.ScheduleParallel();
-            }
+                Offset = quaternion.RotateY(SystemAPI.Time.DeltaTime * math.PI)
+            }.ScheduleParallel();
 
             state.Dependency.Complete();
             var after = ProfilerUnsafeUtility.Timestamp;
@@ -49,29 +39,18 @@ namespace HelloCube.StateChange
         }
     }
 
-    [BurstCompile]
-    public partial struct SpinByValueJob : IJobEntity
-    {
-        public quaternion Offset;
-
-        void Execute(ref LocalTransform transform, in Spin spin)
-        {
-            if (spin.IsSpinning)
-            {
-                transform = transform.Rotate(Offset);
-            }
-        }
-    }
-
-    [WithAll(typeof(Spin))]
+    [WithAll(typeof(StateCubeTag))]
     [BurstCompile]
     partial struct SpinJob : IJobEntity
     {
         public quaternion Offset;
 
-        void Execute(ref LocalTransform transform)
+        void Execute(ref LocalTransform transform, in SpinState spin)
         {
-            transform = transform.Rotate(Offset);
+            if (spin.HasSpinComponent && spin.IsSpinning)
+            {
+                transform = transform.Rotate(Offset);
+            }
         }
     }
 }

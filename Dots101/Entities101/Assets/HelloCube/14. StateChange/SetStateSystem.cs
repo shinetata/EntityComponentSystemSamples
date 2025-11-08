@@ -1,15 +1,16 @@
 using Unity.Burst;
 using Unity.Entities;
 using Unity.Mathematics;
-using Unity.Rendering;
 using Unity.Transforms;
-using UnityEngine;
 using Unity.Profiling.LowLevel.Unsafe;
 
 namespace HelloCube.StateChange
 {
     public partial struct SetStateSystem : ISystem
     {
+        static readonly float4 ColorRed = new float4(1f, 0f, 0f, 1f);
+        static readonly float4 ColorWhite = new float4(1f, 1f, 1f, 1f);
+
         [BurstCompile]
         public void OnCreate(ref SystemState state)
         {
@@ -33,7 +34,6 @@ namespace HelloCube.StateChange
             }
 
             var radiusSq = config.Radius * config.Radius;
-            var ecbSystem = SystemAPI.GetSingleton<BeginSimulationEntityCommandBufferSystem.Singleton>();
 
             state.Dependency.Complete();
             var before = ProfilerUnsafeUtility.Timestamp;
@@ -43,7 +43,9 @@ namespace HelloCube.StateChange
                 new SetValueJob
                 {
                     RadiusSq = radiusSq,
-                    Hit = hit.Value
+                    Hit = hit.Value,
+                    ColorInside = ColorRed,
+                    ColorOutside = ColorWhite
                 }.ScheduleParallel();
             }
             else if (config.Mode == Mode.STRUCTURAL_CHANGE)
@@ -52,14 +54,14 @@ namespace HelloCube.StateChange
                 {
                     RadiusSq = radiusSq,
                     Hit = hit.Value,
-                    ECB = ecbSystem.CreateCommandBuffer(state.WorldUnmanaged).AsParallelWriter()
+                    ColorInside = ColorRed
                 }.ScheduleParallel();
 
                 new RemoveSpinJob
                 {
                     RadiusSq = radiusSq,
                     Hit = hit.Value,
-                    ECB = ecbSystem.CreateCommandBuffer(state.WorldUnmanaged).AsParallelWriter()
+                    ColorOutside = ColorWhite
                 }.ScheduleParallel();
             }
             else if (config.Mode == Mode.ENABLEABLE_COMPONENT)
@@ -68,13 +70,14 @@ namespace HelloCube.StateChange
                 {
                     RadiusSq = radiusSq,
                     Hit = hit.Value,
-                    ECB = ecbSystem.CreateCommandBuffer(state.WorldUnmanaged).AsParallelWriter()
+                    ColorInside = ColorRed
                 }.ScheduleParallel();
 
                 new DisableSpinJob
                 {
                     RadiusSq = radiusSq,
                     Hit = hit.Value,
+                    ColorOutside = ColorWhite
                 }.ScheduleParallel();
             }
 
@@ -90,101 +93,99 @@ namespace HelloCube.StateChange
         }
     }
 
+    [WithAll(typeof(StateCubeTag))]
     [BurstCompile]
     partial struct SetValueJob : IJobEntity
     {
         public float RadiusSq;
         public float3 Hit;
+        public float4 ColorInside;
+        public float4 ColorOutside;
 
-        void Execute(ref URPMaterialPropertyBaseColor color, ref Spin spin, in LocalTransform transform)
+        void Execute(ref CubeColor color, ref SpinState spin, in LocalTransform transform)
         {
-            if (math.distancesq(transform.Position, Hit) <= RadiusSq)
-            {
-                color.Value = (Vector4)Color.red;
-                spin.IsSpinning = true;
-            }
-            else
-            {
-                color.Value = (Vector4)Color.white;
-                spin.IsSpinning = false;
-            }
+            var isInside = math.distancesq(transform.Position, Hit) <= RadiusSq;
+            color.Value = isInside ? ColorInside : ColorOutside;
+            spin.HasSpinComponent = true;
+            spin.IsSpinning = isInside;
         }
     }
 
-    [WithNone(typeof(Spin))]
+    [WithAll(typeof(StateCubeTag))]
     [BurstCompile]
     partial struct AddSpinJob : IJobEntity
     {
         public float RadiusSq;
         public float3 Hit;
-        public EntityCommandBuffer.ParallelWriter ECB;
+        public float4 ColorInside;
 
-        void Execute(Entity entity, ref URPMaterialPropertyBaseColor color, in LocalTransform transform,
-            [ChunkIndexInQuery] int chunkIndex)
+        void Execute(ref CubeColor color, ref SpinState spin, in LocalTransform transform)
         {
             // If cube is inside the hit radius.
             if (math.distancesq(transform.Position, Hit) <= RadiusSq)
             {
-                color.Value = (Vector4)Color.red;
-                ECB.AddComponent<Spin>(chunkIndex, entity);
+                color.Value = ColorInside;
+                spin.HasSpinComponent = true;
+                spin.IsSpinning = true;
             }
         }
     }
 
-    [WithAll(typeof(Spin))]
+    [WithAll(typeof(StateCubeTag))]
     [BurstCompile]
     partial struct RemoveSpinJob : IJobEntity
     {
         public float RadiusSq;
         public float3 Hit;
-        public EntityCommandBuffer.ParallelWriter ECB;
+        public float4 ColorOutside;
 
-        void Execute(Entity entity, ref URPMaterialPropertyBaseColor color, in LocalTransform transform,
-            [ChunkIndexInQuery] int chunkIndex)
+        void Execute(ref CubeColor color, ref SpinState spin, in LocalTransform transform)
         {
-            // If cube is NOT inside the hit radius.
-            if (math.distancesq(transform.Position, Hit) > RadiusSq)
-            {
-                color.Value = (Vector4)Color.white;
-                ECB.RemoveComponent<Spin>(chunkIndex, entity);
-            }
+            var isInside = math.distancesq(transform.Position, Hit) <= RadiusSq;
+            if (isInside)
+                return;
+
+            color.Value = ColorOutside;
+            spin.HasSpinComponent = false;
+            spin.IsSpinning = false;
         }
     }
 
-    [WithNone(typeof(Spin))]
+    [WithAll(typeof(StateCubeTag))]
     [BurstCompile]
     public partial struct EnableSpinJob : IJobEntity
     {
         public float RadiusSq;
         public float3 Hit;
-        public EntityCommandBuffer.ParallelWriter ECB;
+        public float4 ColorInside;
 
-        void Execute(Entity entity, ref URPMaterialPropertyBaseColor color, in LocalTransform transform,
-            [ChunkIndexInQuery] int chunkIndex)
+        void Execute(ref CubeColor color, ref SpinState spin, in LocalTransform transform)
         {
             // If cube is inside the hit radius.
             if (math.distancesq(transform.Position, Hit) <= RadiusSq)
             {
-                color.Value = (Vector4)Color.red;
-                ECB.SetComponentEnabled<Spin>(chunkIndex, entity, true);
+                color.Value = ColorInside;
+                spin.HasSpinComponent = true;
+                spin.IsSpinning = true;
             }
         }
     }
 
+    [WithAll(typeof(StateCubeTag))]
     [BurstCompile]
     public partial struct DisableSpinJob : IJobEntity
     {
         public float RadiusSq;
         public float3 Hit;
+        public float4 ColorOutside;
 
-        void Execute(Entity entity, ref URPMaterialPropertyBaseColor color, in LocalTransform transform,
-            EnabledRefRW<Spin> spinnerEnabled)
+        void Execute(ref CubeColor color, ref SpinState spin, in LocalTransform transform)
         {
             // If cube is NOT inside the hit radius.
             if (math.distancesq(transform.Position, Hit) > RadiusSq)
             {
-                color.Value = (Vector4)Color.white;
-                spinnerEnabled.ValueRW = false;
+                color.Value = ColorOutside;
+                spin.IsSpinning = false;
             }
         }
     }
