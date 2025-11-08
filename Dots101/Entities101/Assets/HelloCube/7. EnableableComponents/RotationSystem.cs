@@ -25,20 +25,23 @@ namespace HelloCube.EnableableComponents
             // Toggle the enabled state of every RotationSpeed
             if (timer < 0)
             {
-                foreach (var rotationSpeedEnabled in
-                         SystemAPI.Query<EnabledRefRW<RotationSpeed>>()
-                             .WithOptions(EntityQueryOptions.IgnoreComponentEnabledState))
+                foreach (var toggle in SystemAPI.Query<RefRW<RotationToggle>>())
                 {
-                    rotationSpeedEnabled.ValueRW = !rotationSpeedEnabled.ValueRO;
+                    toggle.ValueRW.IsEnabled = !toggle.ValueRO.IsEnabled;
                 }
 
                 timer = interval;
             }
 
-            // The query only matches entities whose RotationSpeed is enabled.
-            foreach (var (transform, speed) in
-                     SystemAPI.Query<RefRW<LocalTransform>, RefRO<RotationSpeed>>())
+            // Entities rotate only when their toggle is set to true.
+            foreach (var (transform, speed, toggle) in
+                     SystemAPI.Query<RefRW<LocalTransform>, RefRO<RotationSpeed>, RefRO<RotationToggle>>())
             {
+                if (!toggle.ValueRO.IsEnabled)
+                {
+                    continue;
+                }
+
                 transform.ValueRW = transform.ValueRO.RotateY(
                     speed.ValueRO.RadiansPerSecond * deltaTime);
             }

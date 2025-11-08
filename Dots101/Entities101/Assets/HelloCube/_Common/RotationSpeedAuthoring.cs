@@ -21,6 +21,10 @@ namespace HelloCube
                 {
                     RadiansPerSecond = math.radians(authoring.DegreesPerSecond)
                 });
+                AddComponent(entity, new RotationToggle
+                {
+                    IsEnabled = true
+                });
             }
         }
     }
@@ -28,5 +32,10 @@ namespace HelloCube
     public struct RotationSpeed : IComponentData
     {
         public float RadiansPerSecond;
+    }
+
+    public struct RotationToggle : IComponentData
+    {
+        public bool IsEnabled;
     }
 }

@@ -1,6 +1,7 @@
 using UnityEngine;
 using Unity.Entities;
 using Unity.Mathematics;
+using HelloCube;
 
 namespace HelloCube.EnableableComponents
 {
@@ -15,13 +16,20 @@ namespace HelloCube.EnableableComponents
             {
                 var entity = GetEntity(TransformUsageFlags.Dynamic);
 
-                AddComponent(entity, new RotationSpeed { RadiansPerSecond = math.radians(authoring.DegreesPerSecond) });
-                SetComponentEnabled<RotationSpeed>(entity, authoring.StartEnabled);
+                AddComponent(entity, new RotationSpeed
+                {
+                    RadiansPerSecond = math.radians(authoring.DegreesPerSecond)
+                });
+
+                AddComponent(entity, new RotationToggle
+                {
+                    IsEnabled = authoring.StartEnabled
+                });
             }
         }
     }
 
-    struct RotationSpeed : IComponentData, IEnableableComponent
+    struct RotationSpeed : IComponentData
     {
         public float RadiansPerSecond;
     }
