@@ -30,34 +30,54 @@ namespace HelloCube.CrossQuery
             var prefabCollection = SystemAPI.GetSingleton<PrefabCollection>();
 
             // spawn boxes
-            state.EntityManager.Instantiate(prefabCollection.Box, 20, Allocator.Temp);
-
-            // init the newly spawned boxes
-            int i = 0;
-            foreach (var (velocity, trans, defaultColor, colorProperty) in
-                     SystemAPI.Query<RefRW<Velocity>, RefRW<LocalTransform>,
-                         RefRW<DefaultColor>, RefRW<URPMaterialPropertyBaseColor>>())
+            for (int i = 0; i < 20; i++)
             {
+                var entity = state.EntityManager.Instantiate(prefabCollection.Box);
+                var velocity = state.EntityManager.GetComponentData<Velocity>(entity);
+                var transform = state.EntityManager.GetComponentData<LocalTransform>(entity);
+                var defaultColor = state.EntityManager.GetComponentData<DefaultColor>(entity);
+
+                float4 colorValue;
                 if (i < 10)
                 {
                     // black box on left
-                    velocity.ValueRW.Value = new float3(2, 0, 0);
+                    velocity.Value = new float3(2, 0, 0);
                     var verticalOffset = i * 2;
-                    trans.ValueRW.Position = new float3(-3, -8 + verticalOffset, 0);
-                    defaultColor.ValueRW.Value = new float4(0, 0, 0, 1);
-                    colorProperty.ValueRW.Value = new float4(0, 0, 0, 1);
+                    transform.Position = new float3(-3, -8 + verticalOffset, 0);
+                    defaultColor.Value = new float4(0, 0, 0, 1);
+                    colorValue = defaultColor.Value;
                 }
                 else
                 {
                     // white box on right
-                    velocity.ValueRW.Value = new float3(-2, 0, 0);
+                    velocity.Value = new float3(-2, 0, 0);
                     var verticalOffset = (i - 10) * 2;
-                    trans.ValueRW.Position = new float3(3, -8 + verticalOffset, 0);
-                    defaultColor.ValueRW.Value = new float4(1, 1, 1, 1);
-                    colorProperty.ValueRW.Value = new float4(1, 1, 1, 1);
+                    transform.Position = new float3(3, -8 + verticalOffset, 0);
+                    defaultColor.Value = new float4(1, 1, 1, 1);
+                    colorValue = defaultColor.Value;
                 }
 
-                i++;
+                state.EntityManager.SetComponentData(entity, velocity);
+                state.EntityManager.SetComponentData(entity, transform);
+                state.EntityManager.SetComponentData(entity, defaultColor);
+
+                if (state.EntityManager.HasComponent<CrossQueryColor>(entity))
+                {
+                    state.EntityManager.SetComponentData(entity, new CrossQueryColor { Value = colorValue });
+                }
+                else
+                {
+                    state.EntityManager.AddComponentData(entity, new CrossQueryColor { Value = colorValue });
+                }
+
+                if (state.EntityManager.HasComponent<CrossQueryIndex>(entity))
+                {
+                    state.EntityManager.SetComponentData(entity, new CrossQueryIndex { Value = i });
+                }
+                else
+                {
+                    state.EntityManager.AddComponentData(entity, new CrossQueryIndex { Value = i });
+                }
             }
         }
     }

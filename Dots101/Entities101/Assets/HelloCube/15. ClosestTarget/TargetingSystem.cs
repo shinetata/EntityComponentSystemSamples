@@ -1,8 +1,6 @@
 using System.Collections.Generic;
 using Unity.Burst;
-using Unity.Burst.Intrinsics;
 using Unity.Collections;
-using Unity.Collections.LowLevel.Unsafe;
 using Unity.Entities;
 using Unity.Mathematics;
 using Unity.Profiling;
@@ -46,9 +44,8 @@ namespace HelloCube.ClosestTarget
 
             using var profileMarker = s_ProfilerMarkers[(int)spatialPartitioningType].Auto();
 
-            var targetEntities = targetQuery.ToEntityArray(state.WorldUpdateAllocator);
-            var targetTransforms =
-                targetQuery.ToComponentDataArray<LocalTransform>(state.WorldUpdateAllocator);
+            var targetEntities = targetQuery.ToEntityArray(Allocator.TempJob);
+            var targetTransforms = targetQuery.ToComponentDataArray<LocalTransform>(Allocator.TempJob);
 
             switch (spatialPartitioningType)
             {
@@ -77,6 +74,7 @@ namespace HelloCube.ClosestTarget
 
                     var simple = new SimplePartitioning { TargetEntities = targetEntities, Positions = positions };
                     state.Dependency = simple.ScheduleParallel(state.Dependency);
+                    state.Dependency = positions.Dispose(state.Dependency);
                     break;
                 }
                 case SpatialPartitioningType.KDTree:
@@ -92,13 +90,10 @@ namespace HelloCube.ClosestTarget
 
                     state.Dependency = tree.BuildTree(targetEntities.Length, state.Dependency);
 
-                    var queryKdTree = new QueryKDTree
+                    var queryKdTree = new QueryKDTreeJob
                     {
                         Tree = tree,
-                        TargetEntities = targetEntities,
-                        Scratch = default,
-                        TargetHandle = SystemAPI.GetComponentTypeHandle<Target>(),
-                        LocalTransformHandle = SystemAPI.GetComponentTypeHandle<LocalTransform>(true)
+                        TargetEntities = targetEntities
                     };
                     state.Dependency = queryKdTree.ScheduleParallel(kdQuery, state.Dependency);
 
@@ -109,37 +104,30 @@ namespace HelloCube.ClosestTarget
             }
 
             state.Dependency.Complete();
+            targetEntities.Dispose();
+            targetTransforms.Dispose();
         }
     }
 
+    [WithAll(typeof(Target))]
     [BurstCompile]
-    public struct QueryKDTree : IJobChunk
+    public partial struct QueryKDTreeJob : IJobEntity
     {
         [ReadOnly] public NativeArray<Entity> TargetEntities;
-        public PerThreadWorkingMemory Scratch;
         public KDTree Tree;
 
-        public ComponentTypeHandle<Target> TargetHandle;
-        [ReadOnly] public ComponentTypeHandle<LocalTransform> LocalTransformHandle;
-
-        public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask,
-            in v128 chunkEnabledMask)
+        void Execute([ChunkIndexInQuery] int chunkIndex, ref Target target, in LocalTransform transform)
         {
-            var targets = chunk.GetNativeArray(ref TargetHandle);
-            var transforms = chunk.GetNativeArray(ref LocalTransformHandle);
-
-            for (int i = 0; i < chunk.Count; i++)
+            var neighbours = new NativePriorityHeap<KDTree.Neighbour>(1, Allocator.Temp);
+            try
             {
-                if (!Scratch.Neighbours.IsCreated)
-                {
-                    Scratch.Neighbours = new NativePriorityHeap<KDTree.Neighbour>(1, Allocator.Temp);
-                }
-
-                Scratch.Neighbours.Clear();
-                Tree.GetEntriesInRangeWithHeap(unfilteredChunkIndex, transforms[i].Position, float.MaxValue,
-                    ref Scratch.Neighbours);
-                var nearest = Scratch.Neighbours.Peek().index;
-                targets[i] = new Target { Value = TargetEntities[nearest] };
+                Tree.GetEntriesInRangeWithHeap(chunkIndex, transform.Position, float.MaxValue, ref neighbours);
+                var nearest = neighbours.Peek().index;
+                target.Value = TargetEntities[nearest];
+            }
+            finally
+            {
+                neighbours.Dispose();
             }
         }
     }
@@ -228,9 +216,4 @@ namespace HelloCube.ClosestTarget
         public float2 Position;
     }
 
-    public struct PerThreadWorkingMemory
-    {
-        [NativeDisableContainerSafetyRestriction]
-        public NativePriorityHeap<KDTree.Neighbour> Neighbours;
-    }
 }
