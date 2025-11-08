@@ -31,18 +31,15 @@ namespace HelloCube.Prefabs
             {
                 var prefab = SystemAPI.GetSingleton<Spawner>().Prefab;
 
-                // Instantiating an entity creates copy entities with the same component types and values.
-                var instances = state.EntityManager.Instantiate(prefab, 500, Allocator.Temp);
-
                 // Unlike new Random(), CreateFromIndex() hashes the random seed
                 // so that similar seeds don't produce similar results.
                 var random = Random.CreateFromIndex(updateCounter++);
 
-                foreach (var entity in instances)
+                for (int i = 0; i < 500; i++)
                 {
-                    // Update the entity's LocalTransform component with the new position.
-                    var transform = SystemAPI.GetComponentRW<LocalTransform>(entity);
-                    transform.ValueRW.Position = (random.NextFloat3() - new float3(0.5f, 0, 0.5f)) * 20;
+                    var instance = state.EntityManager.Instantiate(prefab);
+                    var transform = SystemAPI.GetComponentRW<LocalTransform>(instance);
+                    transform.ValueRW.Position = (random.NextFloat3() - new float3(0.5f, 0, 0.5f)) * 20f;
                 }
             }
         }

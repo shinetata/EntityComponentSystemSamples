@@ -2,6 +2,7 @@ using Unity.Burst;
 using Unity.Entities;
 using Unity.Mathematics;
 using Unity.Transforms;
+using Unity.Collections;
 
 namespace HelloCube.RandomSpawn
 {
@@ -16,30 +17,23 @@ namespace HelloCube.RandomSpawn
         [BurstCompile]
         public void OnUpdate(ref SystemState state)
         {
-            var ecbSingleton = SystemAPI.GetSingleton<EndSimulationEntityCommandBufferSystem.Singleton>();
+            var movement = new float3(0, SystemAPI.Time.DeltaTime * -20f, 0);
 
-            new FallingCubeJob
+            var ecb = new EntityCommandBuffer(Allocator.Temp);
+
+            foreach (var (transform, entity) in SystemAPI.Query<RefRW<LocalTransform>>()
+                         .WithAll<Cube>()
+                         .WithEntityAccess())
             {
-                Movement = new float3(0, SystemAPI.Time.DeltaTime * -20, 0),
-                ECB = ecbSingleton.CreateCommandBuffer(state.WorldUnmanaged).AsParallelWriter()
-            }.ScheduleParallel();
-        }
-    }
-
-    [WithAll(typeof(Cube))]
-    [BurstCompile]
-    public partial struct FallingCubeJob : IJobEntity
-    {
-        public float3 Movement;
-        public EntityCommandBuffer.ParallelWriter ECB;
-
-        void Execute([ChunkIndexInQuery] int chunkIndex, Entity entity, ref LocalTransform cubeTransform)
-        {
-            cubeTransform.Position += Movement;
-            if (cubeTransform.Position.y < 0)
-            {
-                ECB.DestroyEntity(chunkIndex, entity);
+                transform.ValueRW.Position += movement;
+                if (transform.ValueRO.Position.y < 0)
+                {
+                    ecb.DestroyEntity(entity);
+                }
             }
+
+            ecb.Playback(state.EntityManager);
+            ecb.Dispose();
         }
     }
 }
