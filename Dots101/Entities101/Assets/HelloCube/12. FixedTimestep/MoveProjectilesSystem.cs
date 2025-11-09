@@ -15,34 +15,24 @@ namespace HelloCube.FixedTimestep
         [BurstCompile]
         public void OnUpdate(ref SystemState state)
         {
-            var ecbSingleton = SystemAPI.GetSingleton<EndSimulationEntityCommandBufferSystem.Singleton>();
+            var timeSinceLoad = (float)SystemAPI.Time.ElapsedTime;
+            var ecb = new EntityCommandBuffer(state.WorldUpdateAllocator);
 
-            new MoveJob
+            foreach (var (transform, projectile, entity) in
+                     SystemAPI.Query<RefRW<LocalTransform>, RefRO<Projectile>>().WithEntityAccess())
             {
-                TimeSinceLoad = (float)SystemAPI.Time.ElapsedTime,
-                ProjectileSpeed = 5.0f,
-                ECBWriter = ecbSingleton.CreateCommandBuffer(state.WorldUnmanaged).AsParallelWriter()
-            }.ScheduleParallel();
-        }
-    }
+                float aliveTime = timeSinceLoad - projectile.ValueRO.SpawnTime;
+                if (aliveTime > 5.0f)
+                {
+                    ecb.DestroyEntity(entity);
+                    continue;
+                }
 
-    [BurstCompile]
-    public partial struct MoveJob : IJobEntity
-    {
-        public float TimeSinceLoad;
-        public float ProjectileSpeed;
-        public EntityCommandBuffer.ParallelWriter ECBWriter;
-
-        void Execute(Entity projectileEntity, [ChunkIndexInQuery] int chunkIndex, ref LocalTransform transform,
-            in Projectile projectile)
-        {
-            float aliveTime = TimeSinceLoad - projectile.SpawnTime;
-            if (aliveTime > 5.0f)
-            {
-                ECBWriter.DestroyEntity(chunkIndex, projectileEntity);
+                transform.ValueRW.Position.x = projectile.ValueRO.SpawnPos.x + aliveTime * 5.0f;
             }
-            transform.Position.x = projectile.SpawnPos.x + aliveTime * ProjectileSpeed;
+
+            ecb.Playback(state.EntityManager);
+            ecb.Dispose();
         }
     }
 }
-

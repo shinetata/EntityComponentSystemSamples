@@ -20,20 +20,26 @@ namespace HelloCube.FixedTimestep
         public void OnUpdate(ref SystemState state)
         {
             float spawnTime = (float)SystemAPI.Time.ElapsedTime;
+            float deltaTime = SystemAPI.Time.DeltaTime;
 
-            foreach (var spawner in
-                     SystemAPI.Query<RefRO<FixedRateSpawner>>())
+            foreach (var spawner in SystemAPI.Query<RefRW<FixedRateSpawner>>())
             {
-                var projectileEntity = state.EntityManager.Instantiate(spawner.ValueRO.Prefab);
-                var spawnPos = spawner.ValueRO.SpawnPos;
-                spawnPos.y += 0.3f * math.sin(5.0f * spawnTime);
-
-                SystemAPI.SetComponent(projectileEntity, LocalTransform.FromPosition(spawnPos));
-                SystemAPI.SetComponent(projectileEntity, new Projectile
+                spawner.ValueRW.Accumulator += deltaTime;
+                while (spawner.ValueRW.Accumulator >= spawner.ValueRO.SpawnInterval)
                 {
-                    SpawnTime = spawnTime,
-                    SpawnPos = spawnPos,
-                });
+                    spawner.ValueRW.Accumulator -= spawner.ValueRO.SpawnInterval;
+
+                    var projectileEntity = state.EntityManager.Instantiate(spawner.ValueRO.Prefab);
+                    var spawnPos = spawner.ValueRO.SpawnPos;
+                    spawnPos.y += 0.3f * math.sin(5.0f * spawnTime);
+
+                    SystemAPI.SetComponent(projectileEntity, LocalTransform.FromPosition(spawnPos));
+                    SystemAPI.SetComponent(projectileEntity, new Projectile
+                    {
+                        SpawnTime = spawnTime,
+                        SpawnPos = spawnPos,
+                    });
+                }
             }
         }
     }

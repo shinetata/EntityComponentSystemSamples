@@ -7,6 +7,7 @@ namespace HelloCube.FixedTimestep
     public class DefaultRateSpawnerAuthoring : MonoBehaviour
     {
         public GameObject projectilePrefab;
+        public float spawnIntervalSeconds = 0.2f;
 
         class Baker : Baker<DefaultRateSpawnerAuthoring>
         {
@@ -18,6 +19,8 @@ namespace HelloCube.FixedTimestep
                 {
                     Prefab = GetEntity(authoring.projectilePrefab, TransformUsageFlags.Dynamic),
                     SpawnPos = GetComponent<Transform>().position,
+                    SpawnInterval = math.max(0.01f, authoring.spawnIntervalSeconds),
+                    Accumulator = 0f
                 };
                 AddComponent(entity, spawnerData);
             }
@@ -28,5 +31,7 @@ namespace HelloCube.FixedTimestep
     {
         public Entity Prefab;
         public float3 SpawnPos;
+        public float SpawnInterval;
+        public float Accumulator;
     }
 }
