@@ -1,4 +1,4 @@
-#if UNITY_EDITOR
+
 
 using Unity.Burst;
 using Unity.Entities;
@@ -23,4 +23,4 @@ namespace HelloCube.StateChange
     }
 }
 
-#endif
+

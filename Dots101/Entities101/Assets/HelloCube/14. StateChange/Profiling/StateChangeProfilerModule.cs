@@ -1,4 +1,4 @@
-#if UNITY_EDITOR
+
 using Unity.Entities;
 using Unity.Profiling;
 using Unity.Profiling.Editor;
@@ -51,4 +51,3 @@ namespace HelloCube.StateChange
     }
 }
 
-#endif
