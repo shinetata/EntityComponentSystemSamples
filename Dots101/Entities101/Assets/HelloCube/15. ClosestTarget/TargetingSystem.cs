@@ -46,54 +46,64 @@ namespace HelloCube.ClosestTarget
 
             var targetEntities = targetQuery.ToEntityArray(Allocator.TempJob);
             var targetTransforms = targetQuery.ToComponentDataArray<LocalTransform>(Allocator.TempJob);
+            var targetData = CollectionHelper.CreateNativeArray<TargetData>(targetEntities.Length, Allocator.TempJob);
+
+            for (int i = 0; i < targetData.Length; i += 1)
+            {
+                targetData[i] = new TargetData
+                {
+                    Entity = targetEntities[i],
+                    Position = targetTransforms[i].Position
+                };
+            }
 
             switch (spatialPartitioningType)
             {
                 case SpatialPartitioningType.None:
                 {
                     var noPartitioning = new NoPartitioning
-                        { TargetEntities = targetEntities, TargetTransforms = targetTransforms };
+                        { Targets = targetData };
                     state.Dependency = noPartitioning.ScheduleParallel(state.Dependency);
                     break;
                 }
                 case SpatialPartitioningType.Simple:
                 {
-                    var positions = CollectionHelper.CreateNativeArray<PositionAndIndex>(targetTransforms.Length,
+                    var positions = CollectionHelper.CreateNativeArray<PositionAndEntity>(targetData.Length,
                         state.WorldUpdateAllocator);
 
                     for (int i = 0; i < positions.Length; i += 1)
                     {
-                        positions[i] = new PositionAndIndex
+                        positions[i] = new PositionAndEntity
                         {
-                            Index = i,
-                            Position = targetTransforms[i].Position.xz
+                            Entity = targetData[i].Entity,
+                            Position = targetData[i].Position.xz
                         };
                     }
 
                     state.Dependency = positions.SortJob(new AxisXComparer()).Schedule(state.Dependency);
 
-                    var simple = new SimplePartitioning { TargetEntities = targetEntities, Positions = positions };
+                    var simple = new SimplePartitioning { Positions = positions };
                     state.Dependency = simple.ScheduleParallel(state.Dependency);
                     state.Dependency = positions.Dispose(state.Dependency);
                     break;
                 }
                 case SpatialPartitioningType.KDTree:
                 {
-                    var tree = new KDTree(targetEntities.Length, Allocator.TempJob, 64);
+                    var tree = new KDTree(targetData.Length, Allocator.TempJob, 64);
 
                     // init KD tree
-                    for (int i = 0; i < targetEntities.Length; i += 1)
+                    for (int i = 0; i < targetData.Length; i += 1)
                     {
                         // NOTE - the first parameter is ignored, only the index matters
-                        tree.AddEntry(i, targetTransforms[i].Position);
+                        tree.AddEntry(i, targetData[i].Position);
                     }
 
-                    state.Dependency = tree.BuildTree(targetEntities.Length, state.Dependency);
+                    state.Dependency = tree.BuildTree(targetData.Length, state.Dependency);
 
                     var queryKdTree = new QueryKDTreeJob
                     {
                         Tree = tree,
-                        TargetEntities = targetEntities
+                        Targets = targetData
                     };
                     state.Dependency = queryKdTree.ScheduleParallel(kdQuery, state.Dependency);
 
@@ -106,6 +116,7 @@ namespace HelloCube.ClosestTarget
             state.Dependency.Complete();
             targetEntities.Dispose();
             targetTransforms.Dispose();
+            targetData.Dispose();
         }
     }
 
@@ -113,7 +124,7 @@ namespace HelloCube.ClosestTarget
     [BurstCompile]
     public partial struct QueryKDTreeJob : IJobEntity
     {
-        [ReadOnly] public NativeArray<Entity> TargetEntities;
+        [ReadOnly] public NativeArray<TargetData> Targets;
         public KDTree Tree;
 
         void Execute([ChunkIndexInQuery] int chunkIndex, ref Target target, in LocalTransform transform)
@@ -123,7 +134,7 @@ namespace HelloCube.ClosestTarget
             {
                 Tree.GetEntriesInRangeWithHeap(chunkIndex, transform.Position, float.MaxValue, ref neighbours);
                 var nearest = neighbours.Peek().index;
-                target.Value = TargetEntities[nearest];
+                target.Value = Targets[nearest].Entity;
             }
             finally
             {
@@ -135,12 +146,11 @@ namespace HelloCube.ClosestTarget
     [BurstCompile]
     public partial struct SimplePartitioning : IJobEntity
     {
-        [ReadOnly] public NativeArray<Entity> TargetEntities;
-        [ReadOnly] public NativeArray<PositionAndIndex> Positions;
+        [ReadOnly] public NativeArray<PositionAndEntity> Positions;
 
         public void Execute(ref Target target, in LocalTransform translation)
         {
-            var ownpos = new PositionAndIndex { Position = translation.Position.xz };
+            var ownpos = new PositionAndEntity { Position = translation.Position.xz };
             var index = Positions.BinarySearch(ownpos, new AxisXComparer());
             if (index < 0) index = ~index;
             if (index >= Positions.Length) index = Positions.Length - 1;
@@ -151,11 +161,11 @@ namespace HelloCube.ClosestTarget
             Search(index + 1, Positions.Length, +1, ref closestDistSq, ref closestEntity, ownpos);
             Search(index - 1, -1, -1, ref closestDistSq, ref closestEntity, ownpos);
 
-            target.Value = TargetEntities[Positions[closestEntity].Index];
+            target.Value = Positions[closestEntity].Entity;
         }
 
         void Search(int startIndex, int endIndex, int step, ref float closestDistSqRef, ref int closestEntityRef,
-            PositionAndIndex ownpos)
+            PositionAndEntity ownpos)
         {
             for (int i = startIndex; i != endIndex; i += step)
             {
@@ -179,22 +189,20 @@ namespace HelloCube.ClosestTarget
     [BurstCompile]
     public partial struct NoPartitioning : IJobEntity
     {
-        [ReadOnly] public NativeArray<LocalTransform> TargetTransforms;
-
-        [ReadOnly] public NativeArray<Entity> TargetEntities;
+        [ReadOnly] public NativeArray<TargetData> Targets;
 
         public void Execute(ref Target target, in LocalTransform translation)
         {
             var closestDistSq = float.MaxValue;
             var closestEntity = Entity.Null;
 
-            for (int i = 0; i < TargetTransforms.Length; i += 1)
+            for (int i = 0; i < Targets.Length; i += 1)
             {
-                var distSq = math.distancesq(TargetTransforms[i].Position, translation.Position);
+                var distSq = math.distancesq(Targets[i].Position, translation.Position);
                 if (distSq < closestDistSq)
                 {
                     closestDistSq = distSq;
-                    closestEntity = TargetEntities[i];
+                    closestEntity = Targets[i].Entity;
                 }
             }
 
@@ -202,18 +210,24 @@ namespace HelloCube.ClosestTarget
         }
     }
 
-    public struct AxisXComparer : IComparer<PositionAndIndex>
+    public struct AxisXComparer : IComparer<PositionAndEntity>
     {
-        public int Compare(PositionAndIndex a, PositionAndIndex b)
+        public int Compare(PositionAndEntity a, PositionAndEntity b)
         {
             return a.Position.x.CompareTo(b.Position.x);
         }
     }
 
-    public struct PositionAndIndex
+    public struct PositionAndEntity
     {
-        public int Index;
+        public Entity Entity;
         public float2 Position;
+    }
+
+    public struct TargetData
+    {
+        public Entity Entity;
+        public float3 Position;
     }
 
 }
