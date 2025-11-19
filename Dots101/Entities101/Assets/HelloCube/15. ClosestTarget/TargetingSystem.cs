@@ -52,7 +52,8 @@ namespace HelloCube.ClosestTarget
             {
                 targetData[i] = new TargetData
                 {
-                    Entity = targetEntities[i],
+                    EntityIndex = targetEntities[i].Index,
+                    EntityVersion = targetEntities[i].Version,
                     Position = targetTransforms[i].Position
                 };
             }
@@ -68,14 +69,15 @@ namespace HelloCube.ClosestTarget
                 }
                 case SpatialPartitioningType.Simple:
                 {
-                    var positions = CollectionHelper.CreateNativeArray<PositionAndEntity>(targetData.Length,
+                    var positions = CollectionHelper.CreateNativeArray<PositionAndId>(targetData.Length,
                         state.WorldUpdateAllocator);
 
                     for (int i = 0; i < positions.Length; i += 1)
                     {
-                        positions[i] = new PositionAndEntity
+                        positions[i] = new PositionAndId
                         {
-                            Entity = targetData[i].Entity,
+                            EntityIndex = targetData[i].EntityIndex,
+                            EntityVersion = targetData[i].EntityVersion,
                             Position = targetData[i].Position.xz
                         };
                     }
@@ -134,7 +136,11 @@ namespace HelloCube.ClosestTarget
             {
                 Tree.GetEntriesInRangeWithHeap(chunkIndex, transform.Position, float.MaxValue, ref neighbours);
                 var nearest = neighbours.Peek().index;
-                target.Value = Targets[nearest].Entity;
+                target.Value = new Entity
+                {
+                    Index = Targets[nearest].EntityIndex,
+                    Version = Targets[nearest].EntityVersion
+                };
             }
             finally
             {
@@ -146,11 +152,11 @@ namespace HelloCube.ClosestTarget
     [BurstCompile]
     public partial struct SimplePartitioning : IJobEntity
     {
-        [ReadOnly] public NativeArray<PositionAndEntity> Positions;
+        [ReadOnly] public NativeArray<PositionAndId> Positions;
 
         public void Execute(ref Target target, in LocalTransform translation)
         {
-            var ownpos = new PositionAndEntity { Position = translation.Position.xz };
+            var ownpos = new PositionAndId { Position = translation.Position.xz };
             var index = Positions.BinarySearch(ownpos, new AxisXComparer());
             if (index < 0) index = ~index;
             if (index >= Positions.Length) index = Positions.Length - 1;
@@ -161,11 +167,15 @@ namespace HelloCube.ClosestTarget
             Search(index + 1, Positions.Length, +1, ref closestDistSq, ref closestEntity, ownpos);
             Search(index - 1, -1, -1, ref closestDistSq, ref closestEntity, ownpos);
 
-            target.Value = Positions[closestEntity].Entity;
+            target.Value = new Entity
+            {
+                Index = Positions[closestEntity].EntityIndex,
+                Version = Positions[closestEntity].EntityVersion
+            };
         }
 
         void Search(int startIndex, int endIndex, int step, ref float closestDistSqRef, ref int closestEntityRef,
-            PositionAndEntity ownpos)
+            PositionAndId ownpos)
         {
             for (int i = startIndex; i != endIndex; i += step)
             {
@@ -202,7 +212,11 @@ namespace HelloCube.ClosestTarget
                 if (distSq < closestDistSq)
                 {
                     closestDistSq = distSq;
-                    closestEntity = Targets[i].Entity;
+                    closestEntity = new Entity
+                    {
+                        Index = Targets[i].EntityIndex,
+                        Version = Targets[i].EntityVersion
+                    };
                 }
             }
 
@@ -210,23 +224,25 @@ namespace HelloCube.ClosestTarget
         }
     }
 
-    public struct AxisXComparer : IComparer<PositionAndEntity>
+    public struct AxisXComparer : IComparer<PositionAndId>
     {
-        public int Compare(PositionAndEntity a, PositionAndEntity b)
+        public int Compare(PositionAndId a, PositionAndId b)
         {
             return a.Position.x.CompareTo(b.Position.x);
         }
     }
 
-    public struct PositionAndEntity
+    public struct PositionAndId
     {
-        public Entity Entity;
+        public int EntityIndex;
+        public int EntityVersion;
         public float2 Position;
     }
 
     public struct TargetData
     {
-        public Entity Entity;
+        public int EntityIndex;
+        public int EntityVersion;
         public float3 Position;
     }
 

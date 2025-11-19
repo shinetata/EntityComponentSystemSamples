@@ -43,11 +43,6 @@ namespace HelloCube.GameObjectSync
     {
         public GameObject RotatorPrefab;
         public Toggle RotationToggle;
-
-        // Every IComponentData class must have a no-arg constructor.
-        public DirectoryManaged()
-        {
-        }
     }
 #endif
 }

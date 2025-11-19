@@ -46,11 +46,6 @@ namespace HelloCube.GameObjectSync
         {
             Value = value;
         }
-
-        // Every IComponentData class must have a no-arg constructor.
-        public RotatorGO()
-        {
-        }
     }
 #endif
 }
